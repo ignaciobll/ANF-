@@ -1,3 +1,5 @@
 .stack-work/
 satanf.cabal
 *~
+*.yaml.lock
+dist-newstyle/
