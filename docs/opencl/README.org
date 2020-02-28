@@ -1,12 +1,11 @@
 * OpenCL fast help
 
-- [[#opencl-help-docs][OpenCL help docs]]
-  - [[#code-example][Code example]]
-  - [[#contextenvironment-preparation][Context/Environment preparation]]
-  - [[#how-to-install][How to install]]
-  - [[#how-to-build][How to build]]
-  - [[#how-to-execute][How to execute]]
-  - [[#references][References]]
+- [[#code-example][Code example]]
+- [[#contextenvironment-preparation][Context/Environment preparation]]
+- [[#how-to-install][How to install]]
+- [[#how-to-build][How to build]]
+- [[#how-to-execute][How to execute]]
+- [[#references][References]]
 
 The supporting platform for this project is OpenCL. Here you will find
 some materials to help you executing the project and a short
