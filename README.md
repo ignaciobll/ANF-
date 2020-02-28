@@ -1,4 +1,6 @@
-![](docs/img/logo.png)
+<p align="center">
+  <img width="512" src="docs/img/logo.png">
+</p>
 
 # ANF Ͱ ⊻
 
