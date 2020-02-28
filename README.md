@@ -7,5 +7,5 @@
 You can find all documentation related to this project in `docs`
 directory and in github pages:
 
-- [Documentation](docs)
-  - [OpenCL intro](docs/opencl)
+- [Documentation](docs/README.org)
+  - [OpenCL intro](docs/opencl/README.org)
