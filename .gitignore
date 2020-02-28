@@ -3,3 +3,5 @@ satanf.cabal
 *~
 *.yaml.lock
 dist-newstyle/
+docs/opencl/build/
+/TAGS
