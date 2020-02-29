@@ -39,8 +39,8 @@ type DMParser = Parsec Void String
 parseDIMACS :: DMParser (DIMACS a)
 parseDIMACS = do
   (nVars, nClauses) <- parseInfoLine
-  pure $ DIMACS { nbvar = nVars, nbclauses = nClauses, clauses = [] }
-
+  cls <- parseClause `endBy` char '\n'
+  pure $ DIMACS { nbvar = nVars, nbclauses = nClauses, clauses = cls}
 
 parseCommentDIMACS :: DMParser ()
 parseCommentDIMACS = many (skipLineComment "c") >> pure ()
@@ -54,6 +54,8 @@ parseInfoLine = do
   nVars <- parseNum
   space1
   nClauses <- parseNum
+  char '\n'
   pure (nVars, nClauses)
 
--- parseClause :: DMParser [Int]
+parseClause :: DMParser [Int]
+parseClause = parseNum `sepBy` char ' '
