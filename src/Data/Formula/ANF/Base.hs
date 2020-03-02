@@ -7,13 +7,13 @@ import           Data.SAT.DIMACS
 
 -- SAT formula in ANF notation with Int variables that can be parsed
 -- from a String
-type BaseSAT = SAT ANF Int String
+type BaseSAT = SAT ANF Integer String
 
 baseSat :: BaseSAT
 baseSat = SAT {
     solveSAT = const Unsatisfiable,
     solveSolution = const [],
-    parseFormula = parseBaseANF
+    parseFormula = undefined -- parseBaseANF
   }
 
 data ANF a
@@ -35,5 +35,15 @@ prettyBase (Var a)             = pretty a
 prettyBase (Lit True)          = text "1"
 prettyBase (Lit False)         = text "0"
 
-parseBaseANF :: DIMACS (ANF Int) -> ANF Int
-parseBaseANF = const (Lit True)
+parseBaseANF :: DIMACS (ANF Integer) -> ANF a
+parseBaseANF (DIMACS _ _ clauses) = toXOr clauses
+
+toAnd :: Clause -> ANF Integer
+toAnd []  = Lit True -- Is this valid?
+toAnd [x] = Var x
+toAnd cls = (foldl1 And) . (fmap Var)
+
+toXOr :: [Clause] -> ANF Integer
+toXOr []  = Lit True -- This is valid :D
+toXOr [c] = toAnd c
+toXOr cls = (foldl1 XOr) . (map toAnd)

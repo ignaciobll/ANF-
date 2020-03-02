@@ -13,7 +13,7 @@ introduction to the ecosystem.
 
 There are some files here to help you get in touch with OpenCL.
 
-- ~CMakeLists.txt~: To build the executables.
+- ~CMakeLists.txt~: To build the executable.
 - ~info.cpp~: First OpenCL program to execute. Gathers basic info of
   your system.
 - ~vector_add.cpp~: Uses OpenCL to calculate the sum of two vectors.
@@ -81,29 +81,72 @@ In the kernels we will define our algorithm, but we need to setup
 properly the environment to make them work correctly. How to make a
 simple setup is explained in the next section.
 
-** TODO Context/Environment preparation
+** Context/Environment preparation
 
 Portability in OpenCL comes with a downside: boilerplate. We need to
-setup the device and identify supperted versions to compile a OpenCL
+setup the device and identify supported versions to compile a OpenCL
 program. This means that OpenCL kernels are compiled at runtime
 (yeah...) depending on the platform.
 
 But remember that this is to make it very portable. The same program
-may be executed in the last Nvidia or AMD graphics card, or even in
+may be executed in the last NVIDIA or AMD graphics card, or even in
 your mobile. On the other hand, performance may be affected because of
 hardware dependant instructions.
 
 There are some concepts involving GPU programming with OpenCL. We will
-need to define.
+need to define them.
 
-- Platform
-- Device
-- Context
-- Program
-- Buffer
-- Queue
+- Platform: A particular implementation of the OpenCL standard. What you install.
+- Device: The hardware device, which runs your programs.
+- Context: Particular scenario for you program, which devices are
+  available, which platforms support...
+- Program: OpenCL code, including kernels and auxiliary
+  functions. This are going to be compiled depending on your context.
+- Queue: A collection of instructions to execute. You send to the
+  queue your tasks and retrieve from them the results.
 
-** TODO How to install
+Al this things need to be defined at runtime, so there is a bit of
+boilerplate that we need to include in our programs. But once we have
+them, we can interact with the hardware very easily.
+
+** How to install
+
+OpenCL is an open cross-platform for parallel programming. Probably
+you can install it without many problems, as it is usually well
+supported and doesn't have hardware limitations. You only need an
+implementation for your platform.
+
+There are free/open and private implementations. You can choose to
+install the one you prefer.
+
+*** Linux
+
+If you are under a Linux system, one of the best resources to know
+what to install is the Arch wiki.
+
+ - https://wiki.archlinux.org/index.php/GPGPU
+
+There is a list for AMD, NVIDIA or Intel runtimes.
+
+*** MacOS
+
+As far as I know, it should be already installed. But not for much
+time, because they are planning to stop using it.
+
+*** Windows
+
+Usually you should have to search for you Graphics Card and install latest drivers.
+
+*** Docker
+
+What? Yep. There are some docker containers ready to execute OpenCL with your card:
+
+#+BEGIN_SRC bash
+docker run -t -i --device /dev/dri:/dev/dri chihchun/opencl-beignet clinfo
+#+END_SRC
+
+You can attach some devices to you container. Neat.
+
 ** How to build
 
 We will use ~CMake~ tool to build the project. Execute the following
