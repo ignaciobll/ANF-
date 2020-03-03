@@ -128,6 +128,17 @@ what to install is the Arch wiki.
 
 There is a list for AMD, NVIDIA or Intel runtimes.
 
+In case you are using Ubuntu 18 (may be applicable to newer versions),
+you could also take a look at this gist:
+
+ - https://gist.github.com/Brainiarc7/dc80b023af5b4e0d02b33923de7ba1ed
+
+Try to install you client driver, but also:
+
+#+BEGIN_SRC sh
+sudo apt install ocl-icd-* opencl-headers
+#+END_SRC
+
 *** MacOS
 
 As far as I know, it should be already installed. But not for much
