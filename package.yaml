@@ -24,12 +24,17 @@ dependencies:
 - wl-pprint
 - megaparsec
 - hspec
+- optparse-applicative
+- Cabal
+- mod
+- vector
+- containers
 
 library:
   source-dirs: src
 
 executables:
-  satanf-exe:
+  satanf:
     main:                Main.hs
     source-dirs:         app
     ghc-options:

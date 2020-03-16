@@ -12,7 +12,7 @@ sc :: Parser ()
 sc = L.space
   space1
   (L.skipLineComment "c ")
-  empty
+  (L.skipBlockComment "c\n" "c\n")
 
 lexeme :: Parser a -> Parser a
 lexeme = L.lexeme sc
@@ -20,8 +20,8 @@ lexeme = L.lexeme sc
 symbol :: String -> Parser String
 symbol = L.symbol sc
 
-integer :: Parser Integer
+integer :: Parser Int
 integer = lexeme L.decimal
 
-signedInteger :: Parser Integer
+signedInteger :: Parser Int
 signedInteger = L.signed sc integer

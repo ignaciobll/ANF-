@@ -1,10 +1,12 @@
 module Data.SAT.DIMACS where
 
-import           Text.Megaparsec       (many, manyTill, (<|>))
-import           Text.Megaparsec.Char  (char)
-
 import           Data.SAT.DIMACS.Lexer (Parser, integer, lexeme, sc,
                                         signedInteger, symbol)
+
+import           Data.Void
+import           Text.Megaparsec       (ParseErrorBundle, errorBundlePretty,
+                                        many, manyTill, parse, (<|>))
+import           Text.Megaparsec.Char  (char)
 
 
 -- | Example of DIMACS format
@@ -25,16 +27,22 @@ import           Data.SAT.DIMACS.Lexer (Parser, integer, lexeme, sc,
 -- transformation may be applied with an identity function
 data DIMACS a = DIMACS
   {
-    nbvar     :: Integer, -- Number of vars
-    nbclauses :: Integer, -- Number of clauses
+    nbvar     :: Int, -- Number of vars
+    nbclauses :: Int, -- Number of clauses
     clauses   :: [Clause] -- Clauses
   }
   deriving (Show, Eq)
 
-type Clause = [Integer]
+type Clause = [Int]
 
 cast :: DIMACS a -> DIMACS b
 cast (DIMACS x y z) = DIMACS x y z
+
+parseDIMACS :: String -> Either (ParseErrorBundle String Void) (DIMACS a)
+parseDIMACS src = parse pDIMACS "" src
+
+printParseError :: ParseErrorBundle String Void -> String
+printParseError bundle = errorBundlePretty bundle
 
 pDIMACS :: Parser (DIMACS a)
 pDIMACS = do
@@ -45,7 +53,7 @@ pDIMACS = do
   clauses <- many pClause
   pure $ DIMACS nbvar nbclauses clauses
 
-pInfoLine :: Parser (Integer, Integer)
+pInfoLine :: Parser (Int, Int)
 pInfoLine = do
   symbol "p"
   lexeme (symbol "cnf" <|> symbol "anf")
@@ -53,5 +61,5 @@ pInfoLine = do
   nbclauses <- lexeme integer
   pure (nbvar, nbclauses)
 
-pClause :: Parser [Integer]
+pClause :: Parser [Int]
 pClause = signedInteger `manyTill` char '0' <* char '\n'

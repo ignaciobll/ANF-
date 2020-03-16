@@ -15,6 +15,12 @@ set(opencl_info_src info.cpp)
 add_executable(info ${opencl_info_src})
 target_link_libraries(info ${OpenCL_LIBRARIES})
 
+## Info
+set(opencl_info_c_src info.c)
+
+add_executable(infoc ${opencl_info_c_src})
+target_link_libraries(infoc ${OpenCL_LIBRARIES})
+
 ## Vector Add
 set(opencl_vector_add_src vector_add.cpp)
 

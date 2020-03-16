@@ -36,7 +36,7 @@ spec = do
       testParse "p anf 2 12\n" pInfoLine (2, 12)
 
     it "parses the info line" $ do
-      let dimac = parse parseInfoLine "" "p cnf 3 2\n"
+      let dimac = parse pInfoLine "" "p cnf 3 2\n"
       dimac `shouldBe` Right (3, 2)
 
     it "parses a well formed DIMAC file (anf)" $ do
