@@ -29,6 +29,13 @@ dependencies:
 - mod
 - vector
 - containers
+- QuickCheck
+- criterion
+- deepseq
+- matrix
+- hashable
+- perfect-hash-generator
+- bits
 
 library:
   source-dirs: src
@@ -41,6 +48,7 @@ executables:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
+    - -O2
     dependencies:
     - satanf
 

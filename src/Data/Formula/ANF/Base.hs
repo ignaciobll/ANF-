@@ -1,15 +1,23 @@
-module Data.Formula.ANF.Base where
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric  #-}
 
-import           Text.PrettyPrint.Leijen (Doc, Pretty, pretty, text, (<+>))
+module Data.Formula.ANF.Base where
 
 import           Data.SAT                (IsSAT (..), SAT (..))
 import           Data.SAT.DIMACS
 
 import qualified Data.Map.Strict         as M
 
+import           Criterion               (Benchmark)
+import qualified Criterion
+import           Text.PrettyPrint.Leijen (Doc, Pretty, pretty, text, (<+>))
+
+import           Control.DeepSeq         (NFData)
+import           GHC.Generics
+
 -- SAT formula in ANF notation with Int variables that can be parsed
 -- from a String
-type BaseSAT = SAT ANF Int String
+type BaseSAT = SAT ANF Int
 
 baseSat :: BaseSAT
 baseSat = SAT {
@@ -23,7 +31,7 @@ data ANF a
   | And (ANF a) (ANF a)
   | Var a
   | Lit Bool
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Generic, NFData)
 
 instance Pretty a => Pretty (ANF a) where
   pretty = prettyBase
@@ -87,3 +95,25 @@ solve anf = if solve' anf > 0 then Satisfiable else Unsatisfiable
 
     merge :: Record -> Record -> Record
     merge l r = M.unionWith (+) l r
+
+{-
+
+  Now let's try to benchmark this execution. Maybe we should end with
+  a data structure that also includes a function to make a benchmark
+  from the data structure. Until I learn more about Criterion, I will
+  simply add a @setupEnv@ to help.
+
+-}
+
+baseEnv :: IO (ANF Int) -> Benchmark
+baseEnv anfIO = Criterion.env anfIO fromBase2Benchmark
+  where
+    fromBase2Benchmark :: ANF Int -> Benchmark
+    fromBase2Benchmark anf =
+      Criterion.bench "Base ANF (whnf)" $ Criterion.whnf solve anf
+
+runBaseBenchmark :: IO (DIMACS a) -> Benchmark
+runBaseBenchmark dimacsIO = do
+  let cast' = cast :: DIMACS a -> DIMACS (ANF Int)
+  let anfIO = (parseBaseANF . cast') <$> dimacsIO
+  baseEnv anfIO

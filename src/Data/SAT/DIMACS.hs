@@ -1,4 +1,11 @@
-module Data.SAT.DIMACS where
+module Data.SAT.DIMACS (
+  DIMACS(..),
+  Clause(..),
+  cast,
+  parseDIMACS,
+  printParseError,
+  genDIMACS
+  ) where
 
 import           Data.SAT.DIMACS.Lexer (Parser, integer, lexeme, sc,
                                         signedInteger, symbol)
@@ -7,6 +14,8 @@ import           Data.Void
 import           Text.Megaparsec       (ParseErrorBundle, errorBundlePretty,
                                         many, manyTill, parse, (<|>))
 import           Text.Megaparsec.Char  (char)
+
+import           Test.QuickCheck
 
 
 -- | Example of DIMACS format
@@ -63,3 +72,12 @@ pInfoLine = do
 
 pClause :: Parser [Int]
 pClause = signedInteger `manyTill` char '0' <* char '\n'
+
+genDIMACS :: Gen (DIMACS a)
+genDIMACS = do
+  nVars <- (+1) <$> getSize
+  nClauses <- (*3) . (+1) <$> getSize
+  let genVar = (\n -> (mod n nVars) + 1) <$> (arbitrary :: Gen Int)
+  let genClause = listOf1 genVar
+  clausesList <- vectorOf nClauses (genClause)
+  pure (DIMACS nVars nClauses clausesList)
