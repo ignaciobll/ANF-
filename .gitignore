@@ -6,3 +6,8 @@ satanf.cabal
 dist-newstyle/
 docs/opencl/build/
 /TAGS
+/.projectile
+/.hspec-failures
+*.prof
+*.hp
+*.ps
