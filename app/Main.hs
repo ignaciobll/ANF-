@@ -14,30 +14,30 @@ import           Data.SAT.DIMACS
 import qualified Criterion
 import qualified Criterion.Main               as CriterionMain
 
+
 main :: IO ()
 main = do
 --  cmdOpts <- parseArgs
   src <- readFile "benchmarks/test.anf" -- runInput cmdOpts
 
-  case parseDIMACS src of
+  case parseAnfDIMACS src of
        Left err     -> putStrLn $ printParseError err
        Right dimacs -> -- print $ (solveSAT intReprSat) $ (parseFormula intReprSat) dimacs
          CriterionMain.defaultMain
          [
-           -- benchDimacs "Base ANF"     baseSat        dimacs
-         -- , benchDimacs "Integer Repr" integerReprSat dimacs
-         -- , benchDimacs "Int Repr"     intReprSat     dimacs
-         -- ,
+           benchDimacs "Base ANF"     baseSat        dimacs
+         , benchDimacs "Integer Repr" integerReprSat dimacs
+         , benchDimacs "Int Repr"     intReprSat     dimacs
+         ,
            benchDimacs "Vector Repr"  vectorReprSat  dimacs
          ]
 
   where
-    benchDimacs :: String -> SAT f v -> DIMACS b -> Criterion.Benchmark
+    benchDimacs :: String -> SAT f v -> DIMACS v -> Criterion.Benchmark
     benchDimacs name sat dimacs =
       let
        solve = solveSAT sat
        parse = parseFormula sat
-       cast' = cast :: DIMACS a -> DIMACS (f v)
-       anf = (parse . cast') dimacs
+       anf = parse dimacs
       in
         Criterion.bench name $ Criterion.whnf solve anf

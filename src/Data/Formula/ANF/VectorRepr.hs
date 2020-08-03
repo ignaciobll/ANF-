@@ -39,18 +39,18 @@ newtype VectorRepr a = VR { getVector :: V.Vector [(a, Int)] }
 vectorReprSat :: SAT VectorRepr Int
 vectorReprSat = SAT {
     solveSAT = solveVectorRepr,
+    minimize = id,
     solveSolution = const [],
     parseFormula = parseVectorRepr
   }
 
 fromClause :: Clause -> Int
-fromClause []     = 0
-fromClause (i:is) = 2^i + (fromClause is)
+fromClause = foldr (\i -> (+) (2^i)) 0
 
 hash :: Int -> Int -> Int
 hash size key = key * 2654435761 .&. (size - 1)
 
-parseVectorRepr :: DIMACS (f Int) -> VectorRepr Int
+parseVectorRepr :: DIMACS Int -> VectorRepr Int
 parseVectorRepr dimacs =
   let
     size :: Int -- Power of 2 length
@@ -83,12 +83,4 @@ solveVectorRepr :: VectorRepr Int -> IsSAT
 solveVectorRepr anf = if solve' anf > 0 then Satisfiable else Unsatisfiable
   where
     solve' :: VectorRepr Int -> Int
-    solve' (VR v) = V.length . (V.filter (\l -> length (filter (odd . snd) l) > 0)) $ v
-
-
-testVector :: IO (VectorRepr Int)
-testVector = do
-  src <- readFile "benchmarks/test.anf"
-  case parseDIMACS src of
-    Left err     -> pure $ VR $ V.replicate 1 []
-    Right dimacs -> pure $ parseVectorRepr dimacs
+    solve' (VR v) = V.length . V.filter (not . any (odd . snd)) $ v

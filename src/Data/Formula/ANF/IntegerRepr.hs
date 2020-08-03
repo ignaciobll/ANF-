@@ -33,6 +33,7 @@ newtype ANF a = ANF { getRepr :: [Repr a] }
 integerReprSat :: SAT ANF Int
 integerReprSat = SAT {
     solveSAT = solveIntRepr,
+    minimize = id,
     solveSolution = const [],
     parseFormula = parseIntRepr
   }
@@ -66,8 +67,7 @@ integerReprSat = SAT {
 newtype Repr a = IR { getIR :: Integer } deriving (Eq, Ord, Num, Show, Bits)
 
 fromClause :: Clause -> Repr Int
-fromClause []     = 0
-fromClause (i:is) = 2^i + (fromClause is)
+fromClause = foldr (\i -> (+) (2^i)) 0
 
 {- |
 
@@ -80,8 +80,8 @@ fromClause (i:is) = 2^i + (fromClause is)
 
 -}
 
-parseIntRepr :: DIMACS (ANF Int) -> ANF Int
-parseIntRepr = ANF . (map fromClause) . clauses
+parseIntRepr :: DIMACS Int -> ANF Int
+parseIntRepr = ANF . map fromClause . clauses
 
 {- |
 

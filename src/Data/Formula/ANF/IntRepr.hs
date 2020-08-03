@@ -12,7 +12,6 @@ module Data.Formula.ANF.IntRepr where
 -}
 
 import           Data.Bits
-import           Data.Formula.ANF
 import           Data.SAT
 import           Data.SAT.DIMACS
 
@@ -24,6 +23,7 @@ newtype ANF a = ANF { getRepr :: [Repr a] }
 intReprSat :: SAT ANF Int
 intReprSat = SAT {
     solveSAT = solveIntRepr,
+    minimize = id,
     solveSolution = const [],
     parseFormula = parseIntRepr
   }
@@ -39,10 +39,9 @@ intReprSat = SAT {
 newtype Repr a = IR { getIR :: Int } deriving (Eq, Ord, Num, Show, Bits)
 
 fromClause :: Clause -> Repr Int
-fromClause []     = 0
-fromClause (i:is) = 2^i + (fromClause is)
+fromClause = foldr (\i -> (+) (2^i)) 0
 
-parseIntRepr :: DIMACS (ANF Int) -> ANF Int
+parseIntRepr :: DIMACS Int -> ANF Int
 parseIntRepr = ANF . (map fromClause . clauses)
 
 type Record = M.IntMap Int

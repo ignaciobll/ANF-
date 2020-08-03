@@ -2,11 +2,6 @@ module Data.SAT where
 
 import           Data.SAT.DIMACS (DIMACS)
 
-import           Criterion       (Benchmark)
-import qualified Criterion
-import qualified Criterion.Main
-
-
 data IsSAT = Satisfiable | Unsatisfiable deriving (Show, Eq)
 
 -- SAT data type
@@ -16,6 +11,7 @@ data IsSAT = Satisfiable | Unsatisfiable deriving (Show, Eq)
 data SAT form var = SAT
   {
     solveSAT      :: form var -> IsSAT,
+    minimize      :: form var -> form var,
     solveSolution :: form var -> [var],
-    parseFormula  :: DIMACS (form var) -> form var
+    parseFormula  :: DIMACS var -> form var
   }

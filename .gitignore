@@ -11,3 +11,5 @@ docs/opencl/build/
 *.prof
 *.hp
 *.ps
+*.aux
+/cabal.project.local

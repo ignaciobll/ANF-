@@ -1,19 +1,28 @@
 module Data.SAT.DIMACS (
   DIMACS(..),
-  Clause(..),
-  cast,
+  Clause,
+  -- cast,
+  parseAnfDIMACS,
+  parseCnfDIMACS,
   parseDIMACS,
   printParseError,
-  genDIMACS
+  genDIMACS,
+  pDIMACS,
+  pInfoLine
   ) where
 
 import           Data.SAT.DIMACS.Lexer (Parser, integer, lexeme, sc,
                                         signedInteger, symbol)
+import           Data.SAT.DIMACS.ANF (pVarANF)
+import           Data.SAT.DIMACS.CNF (pVarCNF)
+
 
 import           Data.Void
 import           Text.Megaparsec       (ParseErrorBundle, errorBundlePretty,
                                         many, manyTill, parse, (<|>))
 import           Text.Megaparsec.Char  (char)
+
+
 
 import           Test.QuickCheck
 
@@ -31,53 +40,56 @@ import           Test.QuickCheck
 --   -3 -4 0
 -- @
 --
--- 'a' is a Phantom Type (I think) that only is used to typecheck
--- different formats It only has semantical meaning, so any
--- transformation may be applied with an identity function
 data DIMACS a = DIMACS
   {
     nbvar     :: Int, -- Number of vars
     nbclauses :: Int, -- Number of clauses
-    clauses   :: [Clause] -- Clauses
+    clauses   :: [[a]] -- Clauses
   }
   deriving (Show, Eq)
 
 type Clause = [Int]
 
-cast :: DIMACS a -> DIMACS b
-cast (DIMACS x y z) = DIMACS x y z
+-- cast :: DIMACS a -> DIMACS b
+-- cast (DIMACS x y z) = DIMACS x y z
 
-parseDIMACS :: String -> Either (ParseErrorBundle String Void) (DIMACS a)
-parseDIMACS src = parse pDIMACS "" src
+parseAnfDIMACS :: String -> Either (ParseErrorBundle String Void) (DIMACS Int)
+parseAnfDIMACS = parseDIMACS pVarANF
+
+parseCnfDIMACS :: String -> Either (ParseErrorBundle String Void) (DIMACS Int)
+parseCnfDIMACS = parseDIMACS pVarCNF
+
+parseDIMACS :: Parser a -> String -> Either (ParseErrorBundle String Void) (DIMACS a)
+parseDIMACS pVar = parse (pDIMACS pVar) ""
 
 printParseError :: ParseErrorBundle String Void -> String
-printParseError bundle = errorBundlePretty bundle
+printParseError = errorBundlePretty
 
-pDIMACS :: Parser (DIMACS a)
-pDIMACS = do
+pDIMACS :: Parser a -> Parser (DIMACS a)
+pDIMACS pVar = do
   sc
   -- Info Line
-  (nbvar, nbclauses) <- pInfoLine
+  (pNbvar, pNbclauses) <- pInfoLine
   -- List of clauses
-  clauses <- many pClause
-  pure $ DIMACS nbvar nbclauses clauses
+  pClauses <- many $ pClause pVar
+  pure $ DIMACS pNbvar pNbclauses pClauses
 
 pInfoLine :: Parser (Int, Int)
 pInfoLine = do
-  symbol "p"
+  _ <- symbol "p"
   lexeme (symbol "cnf" <|> symbol "anf")
-  nbvar <- lexeme integer
-  nbclauses <- lexeme integer
-  pure (nbvar, nbclauses)
+  pNbvar <- lexeme integer
+  pNbclauses <- lexeme integer
+  pure (pNbvar, pNbclauses)
 
-pClause :: Parser [Int]
-pClause = signedInteger `manyTill` char '0' <* char '\n'
+pClause :: Parser a -> Parser [a]
+pClause pVar = pVar `manyTill` char '0' <* char '\n'
 
-genDIMACS :: Gen (DIMACS a)
-genDIMACS = do
+genDIMACS :: Gen a -> Gen (DIMACS a)
+genDIMACS genVar = do
   nVars <- (+1) <$> getSize
   nClauses <- (*3) . (+1) <$> getSize
-  let genVar = (\n -> (mod n nVars) + 1) <$> (arbitrary :: Gen Int)
+  -- let genVar = (\n -> (mod n nVars) + 1) <$> (arbitrary :: Gen Int)
   let genClause = listOf1 genVar
-  clausesList <- vectorOf nClauses (genClause)
+  clausesList <- vectorOf nClauses genClause
   pure (DIMACS nVars nClauses clausesList)

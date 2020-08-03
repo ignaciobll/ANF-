@@ -8,8 +8,6 @@ import           Data.SAT.DIMACS
 
 import qualified Data.Map.Strict         as M
 
-import           Criterion               (Benchmark)
-import qualified Criterion
 import           Text.PrettyPrint.Leijen (Doc, Pretty, pretty, text, (<+>))
 
 import           Control.DeepSeq         (NFData)
@@ -22,6 +20,7 @@ type BaseSAT = SAT ANF Int
 baseSat :: BaseSAT
 baseSat = SAT {
     solveSAT = solve,
+    minimize = id, -- minimizeBase,
     solveSolution = const [],
     parseFormula = parseBaseANF
   }
@@ -45,12 +44,16 @@ prettyBase (Var a)             = pretty a
 prettyBase (Lit True)          = text "1"
 prettyBase (Lit False)         = text "0"
 
-parseBaseANF :: DIMACS (ANF Int) -> ANF Int
-parseBaseANF (DIMACS _ _ clauses) = toXOr clauses
+parseBaseANF :: DIMACS Int -> ANF Int
+parseBaseANF = toXOr . clauses
 
+-- | @Clause@ = @[Int]@, so this function simply build a tree of left associated
+-- variables.
+--
+-- >>> toAnd [1,2,3] == And (And (Var 1) (Var 2)) (Var 3)
 toAnd :: Clause -> ANF Int
 toAnd []  = Lit True -- Is this valid?
-toAnd cls = (foldl1 And) . (fmap Var) $ cls
+toAnd cls = (foldl1 And) . fmap Var $ cls
 
 toXOr :: [Clause] -> ANF Int
 toXOr []  = Lit True -- This is valid :D
@@ -87,33 +90,11 @@ solve :: ANF Int -> IsSAT
 solve anf = if solve' anf > 0 then Satisfiable else Unsatisfiable
   where
     solve' :: ANF Int -> Int
-    solve' f = M.size . (M.filter odd) $ build M.empty f
+    solve' f = M.size . M.filter odd $ build M.empty f
 
     build :: Record -> ANF Int -> Record
     build m (XOr l r) = m `merge` (build M.empty l) `merge` (build M.empty r)
     build m other     = M.insertWith (+) other 1 m
 
     merge :: Record -> Record -> Record
-    merge l r = M.unionWith (+) l r
-
-{-
-
-  Now let's try to benchmark this execution. Maybe we should end with
-  a data structure that also includes a function to make a benchmark
-  from the data structure. Until I learn more about Criterion, I will
-  simply add a @setupEnv@ to help.
-
--}
-
-baseEnv :: IO (ANF Int) -> Benchmark
-baseEnv anfIO = Criterion.env anfIO fromBase2Benchmark
-  where
-    fromBase2Benchmark :: ANF Int -> Benchmark
-    fromBase2Benchmark anf =
-      Criterion.bench "Base ANF (whnf)" $ Criterion.whnf solve anf
-
-runBaseBenchmark :: IO (DIMACS a) -> Benchmark
-runBaseBenchmark dimacsIO = do
-  let cast' = cast :: DIMACS a -> DIMACS (ANF Int)
-  let anfIO = (parseBaseANF . cast') <$> dimacsIO
-  baseEnv anfIO
+    merge = M.unionWith (+)
