@@ -17,7 +17,7 @@
 #
 # resolver: ./custom-snapshot.yaml
 # resolver: https://example.com/snapshots/2018-01-01.yaml
-resolver: lts-16.2
+resolver: lts-16.8
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -30,6 +30,7 @@ resolver: lts-16.2
 #   - wai
 packages:
 - .
+- Smtlib
 # Dependency packages to be pulled from upstream that are not in the resolver.
 # These entries can reference officially published versions as well as
 # forks / in-progress versions pinned to a git hash. For example:
@@ -41,7 +42,6 @@ packages:
 #
 extra-deps:
   - wl-pprint-1.2.1@sha256:aea676cff4a062d7d912149d270e33f5bb0c01b68a9db46ff13b438141ff4b7c,734
-
 
 # Override default flag values for local packages and extra-deps
 # flags: {}

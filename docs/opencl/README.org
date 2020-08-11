@@ -208,3 +208,53 @@ C [24 24 24 24 24 24 24 24 24 24 24 24 24 24 24 24 24 24 24 24 24 24 24 24 24 ]
 - OpenCL specification (web form)
   - Version 1.2: https://www.khronos.org/registry/OpenCL/sdk/1.2/docs/man/xhtml/
   - Version 2.2: https://www.khronos.org/registry/OpenCL/specs/2.2/html/OpenCL_API.html
+
+** Info Output
+
+*** Desktop with AMD GPU
+
+#+begin_src sh
+>>> ./infoc
+Starting OpenCL device query:
+------------------------------
+
+ Number of OpenCL capable platforms available: 1
+--------------------------------------------------
+
+	 Platform ID: 0
+	 ----------------
+
+		 [Platform 0] CL_PLATFORM_NAME: Clover
+		 [Platform 0] CL_PLATFORM_VENDOR: Mesa
+		 [Platform 0] CL_PLATFORM_VERSION: OpenCL 1.1 Mesa 20.1.3
+		 [Platform 0] CL_PLATFORM_PROFILE: FULL_PROFILE
+		 [Platform 0] CL_PLATFORM_EXTENSIONS: cl_khr_icd
+
+		 [Platform 0] Number of devices available: 1
+		 ---------------------------------------------
+
+			 [Platform 0] Device ID: 0
+			 ---------------------------
+
+					 [Platform 0] [Device 0] CL_DEVICE_NAME: AMD Radeon (TM) R9 380 Series (TONGA, DRM 3.37.0, 5.7.9-1-MANJARO, LLVM 10.0.0)
+					 [Platform 0] [Device 0] CL_DEVICE_VERSION: OpenCL 1.1 Mesa 20.1.3
+					 [Platform 0] [Device 0] CL_DRIVER_VERSION: 20.1.3
+					 [Platform 0] [Device 0] CL_DEVICE_OPENCL_C_VERSION: OpenCL C 1.1
+					 [Platform 0] [Device 0] CL_DEVICE_MAX_CLOCK_FREQUENCY: 1010 MHz
+					 [Platform 0] [Device 0] CL_DEVICE_MAX_COMPUTE_UNITS: 28
+					 [Platform 0] [Device 0] CL_DEVICE_GLOBAL_MEM_SIZE: 4096 MB
+					 [Platform 0] [Device 0] CL_DEVICE_MAX_MEM_ALLOC_SIZE: 3276 MB
+					 [Platform 0] [Device 0] CL_DEVICE_LOCAL_MEM_SIZE: 32 KB
+					 [Platform 0] [Device 0] CL_DEVICE_MAX_WORK_GROUP_SIZE: 256
+					 [Platform 0] [Device 0] CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS: 3
+					 [Platform 0] [Device 0] CL_DEVICE_MAX_WORK_ITEM_SIZES: 256 256 256
+					 [Platform 0] [Device 0] CL_DEVICE_IMAGE_SUPPORT: 0 (Not available)
+
+
+>>> ./info
+Device name:          AMD Radeon (TM) R9 380 Series (TONGA, DRM 3.37.0, 5.7.9-1-MANJARO, LLVM 10.0.0)
+Driver version:       OpenCL 1.1 Mesa 20.1.3
+Compute Units:        28
+Workgroup size (max): 256
+Work units (max):     28x256 = 7168
+#+end_src

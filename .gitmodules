@@ -1,0 +1,3 @@
+[submodule "Smtlib"]
+	path = Smtlib
+	url = git@github.com:ignaciobll/Smtlib.git

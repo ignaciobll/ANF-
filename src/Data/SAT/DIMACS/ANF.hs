@@ -1,10 +1,12 @@
 module Data.SAT.DIMACS.ANF (
+  ANFV,
   pVarANF
   ) where
 
-import           Data.SAT.DIMACS.Lexer (Parser, signedInteger)
+import           Data.SAT.DIMACS.Lexer (Parser, signedInteger, symbol)
+import           Text.Megaparsec ((<|>))
 
-data ValueANF = Var Int | Lit Bool deriving (Show, Eq)
+data ANFV = Var Int | Lit Bool deriving (Show, Eq)
 
-pVarANF :: Parser Int
-pVarANF = signedInteger
+pVarANF :: Parser ANFV
+pVarANF = (Var <$> signedInteger) <|> (symbol "T" >> pure (Lit True))

@@ -13,7 +13,7 @@ module Data.SAT.DIMACS (
 
 import           Data.SAT.DIMACS.Lexer (Parser, integer, lexeme, sc,
                                         signedInteger, symbol)
-import           Data.SAT.DIMACS.ANF (pVarANF)
+import           Data.SAT.DIMACS.ANF (pVarANF, ANFV)
 import           Data.SAT.DIMACS.CNF (pVarCNF)
 
 
@@ -21,8 +21,6 @@ import           Data.Void
 import           Text.Megaparsec       (ParseErrorBundle, errorBundlePretty,
                                         many, manyTill, parse, (<|>))
 import           Text.Megaparsec.Char  (char)
-
-
 
 import           Test.QuickCheck
 
@@ -50,10 +48,7 @@ data DIMACS a = DIMACS
 
 type Clause = [Int]
 
--- cast :: DIMACS a -> DIMACS b
--- cast (DIMACS x y z) = DIMACS x y z
-
-parseAnfDIMACS :: String -> Either (ParseErrorBundle String Void) (DIMACS Int)
+parseAnfDIMACS :: String -> Either (ParseErrorBundle String Void) (DIMACS ANFV)
 parseAnfDIMACS = parseDIMACS pVarANF
 
 parseCnfDIMACS :: String -> Either (ParseErrorBundle String Void) (DIMACS Int)

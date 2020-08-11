@@ -13,3 +13,4 @@ docs/opencl/build/
 *.ps
 *.aux
 /cabal.project.local
+/.ghci

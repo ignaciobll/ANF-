@@ -20,7 +20,7 @@ main = do
 --  cmdOpts <- parseArgs
   src <- readFile "benchmarks/test.anf" -- runInput cmdOpts
 
-  case parseAnfDIMACS src of
+  case parseCnfDIMACS src of
        Left err     -> putStrLn $ printParseError err
        Right dimacs -> -- print $ (solveSAT intReprSat) $ (parseFormula intReprSat) dimacs
          CriterionMain.defaultMain

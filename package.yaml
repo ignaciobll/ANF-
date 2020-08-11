@@ -23,6 +23,7 @@ dependencies:
 - base >= 4.7 && < 5
 - wl-pprint
 - megaparsec
+- parsec
 - hspec
 - optparse-applicative
 - Cabal
@@ -36,6 +37,7 @@ dependencies:
 - hashable
 - perfect-hash-generator
 - bits
+- Smtlib
 
 library:
   source-dirs: src
