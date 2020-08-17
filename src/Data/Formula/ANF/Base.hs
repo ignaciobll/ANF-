@@ -28,6 +28,10 @@ baseSat =
   SAT { solveSAT = solve, minimize = id -- minimizeBase,
                                        , solveSolution = const [], parseFormula = parseBaseANF }
 
+{-| ANF data type can construct an infinite tree of expressions. It can derive
+  from both branches and could not be of canonical form. For a 'canonicalish'
+  approach, see @CANF@.
+-}
 data ANF a
   = XOr (ANF a) (ANF a)
   | And (ANF a) (ANF a)
@@ -38,7 +42,13 @@ data ANF a
 instance Pretty a => Pretty (ANF a) where
   pretty = prettyBase
 
+data CANF a = CXOr (CAnd a) (CANF a)
+data CAnd a = CValue a (CAnd a) | Single (CValue a)
+data CValue a = CVar a | CLit Bool
+
 prettyBase :: Pretty a => ANF a -> Doc
+prettyBase (And l@(XOr _ _) r@(XOr _ _)) =
+  text "(" <> pretty l <> text ")(" <> pretty r <> text ")"
 prettyBase (And l@(XOr _ _) r          ) = text "(" <> pretty l <> text ")" <> pretty r
 prettyBase (And l           r@(XOr _ _)) = pretty l <> text "(" <> pretty r <> text ")"
 prettyBase (And l           r          ) = pretty l <> pretty r
@@ -101,6 +111,9 @@ solve anf = if solve' anf > 0 then Satisfiable else Unsatisfiable
 
 ----------------
 
+{-| Parses a subset of an Smtlib expression.
+
+-}
 smtToBaseANF :: Source -> [ANF String]
 smtToBaseANF = rights . map commandToANF
  where
@@ -118,3 +131,16 @@ smtToBaseANF = rights . map commandToANF
   termToANF (TermQualIdentifierT (QIdentifier (ISymbol "and")) terms) =
     foldl1 And (map termToANF terms)
   termToANF _ = Lit False
+
+---------------
+
+minimizeBase :: Eq a => ANF a -> ANF a
+minimizeBase (And left (XOr xleft xright)) =
+  XOr (minimizeBase (And left xleft)) (minimizeBase (And left xright))
+minimizeBase (And (XOr xleft xright) right) =
+  XOr (minimizeBase (And xleft right)) (minimizeBase (And xright right))
+minimizeBase (XOr left right) = XOr (minimizeBase left) (minimizeBase right)
+-- minimizeBase (And left right) | left == right = left
+minimizeBase anf              = anf
+
+---------------

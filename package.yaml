@@ -38,6 +38,10 @@ dependencies:
 - perfect-hash-generator
 - bits
 - Smtlib
+- OpenCL
+# - CLUtil
+- language-c-quote
+# - mainland-pretty
 
 library:
   source-dirs: src
@@ -53,6 +57,19 @@ executables:
     - -O2
     dependencies:
     - satanf
+
+  satanf-clinfo:
+    main:                CLInfo.hs
+    source-dirs:         app
+    ghc-options:
+    - -main-is CLInfo
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    # - -O2
+    dependencies:
+    - satanf
+
 
 tests:
   satanf-test:
