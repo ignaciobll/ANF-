@@ -43,7 +43,8 @@ packages:
 extra-deps:
   - wl-pprint-1.2.1@sha256:aea676cff4a062d7d912149d270e33f5bb0c01b68a9db46ff13b438141ff4b7c,734
   - OpenCL-1.0.3.4@sha256:ef90f955632749353251887ce66357c5ed8e98e8b437ff91ce406ae9187f3953,2590
-
+  - github: acowley/CLUtil
+    commit: d57f05cb3419001b3079d4dfd738bf4538a115ce # August 3, 2019
 # Override default flag values for local packages and extra-deps
 # flags: {}
 

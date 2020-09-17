@@ -39,9 +39,9 @@ dependencies:
 - bits
 - Smtlib
 - OpenCL
-# - CLUtil
+- CLUtil
 - language-c-quote
-# - mainland-pretty
+- mainland-pretty
 
 library:
   source-dirs: src
@@ -69,6 +69,31 @@ executables:
     # - -O2
     dependencies:
     - satanf
+
+  satanf-vector:
+    main:               CLVectorSample.hs
+    source-dirs:        app
+    ghc-options:
+    - -main-is CLVectorSample
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    # - -O2
+    dependencies:
+    - satanf
+
+  satanf-interactive:
+    main:               Interactive.hs
+    source-dirs:        app
+    ghc-options:
+    - -main-is Interactive
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    # - -O2
+    dependencies:
+    - satanf
+
 
 
 tests:

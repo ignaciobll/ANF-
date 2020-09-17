@@ -1,0 +1,11 @@
+c Executed arguments: --cnfread test0.cnf --anfwrite test0.anf
+x(0)*x(1)*x(2) + x(0)*x(1) + x(0)*x(2) + x(0) + x(1)*x(2) + x(1) + x(2) + T
+x(1)*x(2) + x(1) + x(2) + 1
+x(0)*x(2) + x(0) + x(2) + 1
+c -------------
+c Fixed values
+c -------------
+c -------------
+c Equivalences
+c -------------
+c UNSAT : false
