@@ -1,16 +1,21 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveTraversable #-}
 
 module Data.Formula.ANF.Base where
 
 import           Control.DeepSeq                ( NFData )
 import           Data.Either                    ( rights )
 import qualified Data.Map.Strict               as M
+
+import qualified Data.Formula.Prop             as P
+import           Data.SAT.DIMACS
 import           Data.SAT                       ( IsSAT(..)
                                                 , SAT(..)
                                                 )
-import           Data.SAT.DIMACS
-import           GHC.Generics
+
 import           Smtlib.Syntax.Syntax
 import           Text.PrettyPrint.Leijen        ( (<+>)
                                                 , Doc
@@ -19,14 +24,18 @@ import           Text.PrettyPrint.Leijen        ( (<+>)
                                                 , text
                                                 )
 
+import           GHC.Generics
+
 -- SAT formula in ANF notation with Int variables that can be parsed
 -- from a String
 type BaseSAT = SAT ANF Int
 
 baseSat :: BaseSAT
-baseSat =
-  SAT { solveSAT = solve, minimize = id -- minimizeBase,
-                                       , solveSolution = const [], parseFormula = parseBaseANF }
+baseSat = SAT { solveSAT      = solve
+              , minimize      = minimizeBase
+              , solveSolution = const []
+              , parseFormula  = parseBaseANF
+              }
 
 {-| ANF data type can construct an infinite tree of expressions. It can derive
   from both branches and could not be of canonical form. For a 'canonicalish'
@@ -36,8 +45,9 @@ data ANF a
   = XOr (ANF a) (ANF a)
   | And (ANF a) (ANF a)
   | Var a
-  | Lit Bool
-  deriving (Show, Eq, Ord, Generic, NFData)
+  | T
+  | F
+  deriving (Show, Eq, Ord, Generic, NFData, Functor, Foldable, Traversable)
 
 instance Pretty a => Pretty (ANF a) where
   pretty = prettyBase
@@ -54,8 +64,8 @@ prettyBase (And l           r@(XOr _ _)) = pretty l <> text "(" <> pretty r <> t
 prettyBase (And l           r          ) = pretty l <> pretty r
 prettyBase (XOr l           r          ) = pretty l <+> (text "⊕" <+> pretty r)
 prettyBase (Var a                      ) = pretty a
-prettyBase (Lit True                   ) = text "1"
-prettyBase (Lit False                  ) = text "0"
+prettyBase T                             = text "1"
+prettyBase F                             = text "0"
 
 parseBaseANF :: DIMACS Int -> ANF Int
 parseBaseANF = toXOr . clauses
@@ -65,11 +75,11 @@ parseBaseANF = toXOr . clauses
 --
 -- >>> toAnd [1,2,3] == And (And (Var 1) (Var 2)) (Var 3)
 toAnd :: Clause -> ANF Int
-toAnd []  = Lit True -- Is this valid?
+toAnd []  = T
 toAnd cls = foldl1 And . fmap Var $ cls
 
 toXOr :: [Clause] -> ANF Int
-toXOr []  = Lit True -- This is valid :D
+toXOr []  = F -- This is valid :D (false is the z over xor)
 toXOr cls = foldl1 XOr . map toAnd $ cls
 
 ---------------- Solver ------------------
@@ -123,24 +133,53 @@ smtToBaseANF = rights . map commandToANF
   commandToANF _             = Left "Command was not an Assert"
 
   termToANF :: Term -> ANF String
-  termToANF (TermQualIdentifier (QIdentifier (ISymbol "true" ))) = Lit True
-  termToANF (TermQualIdentifier (QIdentifier (ISymbol "false"))) = Lit False
+  termToANF (TermQualIdentifier (QIdentifier (ISymbol "true" ))) = T
+  termToANF (TermQualIdentifier (QIdentifier (ISymbol "false"))) = F
   termToANF (TermQualIdentifier (QIdentifier (ISymbol sym    ))) = Var sym
   termToANF (TermQualIdentifierT (QIdentifier (ISymbol "xor")) terms) =
     foldl1 XOr (map termToANF terms)
   termToANF (TermQualIdentifierT (QIdentifier (ISymbol "and")) terms) =
     foldl1 And (map termToANF terms)
-  termToANF _ = Lit False
+  termToANF _ = F
 
 ---------------
 
+-- | Canonical form of an ANF
+--
+-- Cases:
+--   min a(b+c) => (min ab) + (min ac)
+--   min (b+c)a => (min ab) + (min ac)
+--   min a + b  => min a + min b
+--   min aa     => min a
 minimizeBase :: Eq a => ANF a -> ANF a
-minimizeBase (And left (XOr xleft xright)) =
-  XOr (minimizeBase (And left xleft)) (minimizeBase (And left xright))
+minimizeBase (And left (XOr r1 r2)) =
+  minimizeBase $ XOr (minimizeBase (And left r1)) (minimizeBase (And left r2))
 minimizeBase (And (XOr xleft xright) right) =
-  XOr (minimizeBase (And xleft right)) (minimizeBase (And xright right))
-minimizeBase (XOr left right) = XOr (minimizeBase left) (minimizeBase right)
--- minimizeBase (And left right) | left == right = left
-minimizeBase anf              = anf
+  minimizeBase $ XOr (minimizeBase (And xleft right)) (minimizeBase (And xright right))
+minimizeBase (XOr (XOr l1 l2) right) =
+  minimizeBase $ XOr (minimizeBase l1) (minimizeBase $ XOr l2 right)
+minimizeBase (XOr left right)                 = XOr (minimizeBase left) (minimizeBase right)
+minimizeBase (And left right) | left == right = minimizeBase left
+minimizeBase anf                              = anf
+
+height :: (Num a, Ord a) => ANF b -> a
+height (XOr l r) = 1 + max (height l) (height r)
+height (And l r) = 1 + max (height l) (height r)
+height _         = 1
+
+unXOr :: ANF a -> [ANF a]
+unXOr (XOr l r) = l : (unXOr r)
+unXOr anf       = [anf]
 
 ---------------
+
+fromProp :: P.Prop a -> ANF a
+fromProp (P.And l r) = And (fromProp l) (fromProp r)
+fromProp (P.XOr l r) = XOr (fromProp l) (fromProp r)
+fromProp (P.Or  l r) = XOr (And (fromProp l) (fromProp r)) (XOr (fromProp l) (fromProp r)) -- a || b = ab + a + b
+fromProp (P.Imp l r) = XOr (And (fromProp l) (fromProp r)) (XOr (fromProp l) T) -- a => b = ab + a + 1
+fromProp (P.Iff l r) = XOr (fromProp l) (XOr (fromProp r) T) -- a <=> b = a + b + 1
+fromProp (P.Not p  ) = XOr (fromProp p) T -- not a = a + 1
+fromProp (P.Var v  ) = Var v
+fromProp (P.T      ) = T
+fromProp (P.F      ) = F

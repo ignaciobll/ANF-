@@ -34,9 +34,18 @@ itMinimizesAnANF :: Spec
 itMinimizesAnANF = do
   let minimize' = minimize baseSat
   describe "Minimization" $ do
-    it "Leaves a reduced term as it is" $ minimize' (And (Lit True) (Var 1)) `shouldBe` And
-      (Lit True)
-      (Var 1)
+    it "Leaves a reduced term as it is" $ minimize' (And (T) (Var 1)) `shouldBe` And (T) (Var 1)
+    it "min a(b+c) => (min ab) + (min ac)"
+      $          minimize' (And (Var 1) (XOr (Var 2) (Var 3)))
+      `shouldBe` (XOr (And (Var 1) (Var 2)) (And (Var 1) (Var 3)))
+
+    it "min (b+c)a => (min ab) + (min ac)"
+      $          minimize' (And (XOr (Var 2) (Var 3)) (Var 1))
+      `shouldBe` (XOr (And (Var 2) (Var 1)) (And (Var 3) (Var 1)))
+    it "min a + b  => min a + min b"
+      $          minimize' (XOr (Var 1) (Var 2))
+      `shouldBe` (XOr (Var 1) (Var 2))
+    it "min aa     => min a" $ minimize' (And (Var 1) (Var 1)) `shouldBe` (Var 1)
 
 itConvertsSmtToBase :: Spec
 itConvertsSmtToBase = do
@@ -57,14 +66,12 @@ itConvertsSmtToBase = do
         in  smtToBaseANF smt `shouldBe` [XOr (Var "a") (XOr (Var "b") (Var "c"))]
 
     it "Parses a formula with vars and lits"
-      $ let
-          (Right smt) = parseSmt "(assert (xor (and a b c) (and a c) (and b c) true))"
-          anf =
-            foldl1 XOr
-              $  (foldl1 And $ (Var "a") :| [(Var "b"), (Var "c")])
-              :| [ foldl1 And $ (Var "a") :| [(Var "c")]
-                 , foldl1 And $ (Var "b") :| [(Var "c")]
-                 , (Lit True)
-                 ]
-        in
-          smtToBaseANF smt `shouldBe` [anf]
+      $ let (Right smt) = parseSmt "(assert (xor (and a b c) (and a c) (and b c) true))"
+            anf =
+              foldl1 XOr
+                $  (foldl1 And $ (Var "a") :| [(Var "b"), (Var "c")])
+                :| [ foldl1 And $ (Var "a") :| [(Var "c")]
+                   , foldl1 And $ (Var "b") :| [(Var "c")]
+                   , (T)
+                   ]
+        in  smtToBaseANF smt `shouldBe` [anf]

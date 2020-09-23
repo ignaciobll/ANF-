@@ -42,6 +42,7 @@ dependencies:
 - CLUtil
 - language-c-quote
 - mainland-pretty
+- pretty-simple
 
 library:
   source-dirs: src
