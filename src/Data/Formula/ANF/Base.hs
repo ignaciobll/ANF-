@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveFunctor #-}
@@ -8,14 +9,7 @@ module Data.Formula.ANF.Base where
 
 import           Control.DeepSeq                ( NFData )
 import           Data.Either                    ( rights )
-import qualified Data.Map.Strict               as M
-
-import qualified Data.Formula.Prop             as P
-import           Data.SAT.DIMACS
-import           Data.SAT                       ( IsSAT(..)
-                                                , SAT(..)
-                                                )
-
+import           Data.Foldable                  ( toList )
 import           Smtlib.Syntax.Syntax
 import           Text.PrettyPrint.Leijen        ( (<+>)
                                                 , Doc
@@ -23,16 +17,28 @@ import           Text.PrettyPrint.Leijen        ( (<+>)
                                                 , pretty
                                                 , text
                                                 )
-
 import           GHC.Generics
+
+import qualified Data.Map.Strict               as M
+import qualified Data.List                     as L
+
+
+
+
+import           Data.SAT.DIMACS
+import           Data.SAT                       ( IsSAT(..)
+                                                , SAT(..)
+                                                )
+import qualified Data.Formula.Prop             as P
+
 
 -- SAT formula in ANF notation with Int variables that can be parsed
 -- from a String
 type BaseSAT = SAT ANF Int
 
 baseSat :: BaseSAT
-baseSat = SAT { solveSAT      = solve
-              , minimize      = minimizeBase
+baseSat = SAT { solveSAT      = solveByCanonical
+              , minimize      = canonical
               , solveSolution = const []
               , parseFormula  = parseBaseANF
               }
@@ -51,10 +57,6 @@ data ANF a
 
 instance Pretty a => Pretty (ANF a) where
   pretty = prettyBase
-
-data CANF a = CXOr (CAnd a) (CANF a)
-data CAnd a = CValue a (CAnd a) | Single (CValue a)
-data CValue a = CVar a | CLit Bool
 
 prettyBase :: Pretty a => ANF a -> Doc
 prettyBase (And l@(XOr _ _) r@(XOr _ _)) =
@@ -144,23 +146,48 @@ smtToBaseANF = rights . map commandToANF
 
 ---------------
 
--- | Canonical form of an ANF
---
--- Cases:
---   min a(b+c) => (min ab) + (min ac)
---   min (b+c)a => (min ab) + (min ac)
---   min a + b  => min a + min b
---   min aa     => min a
-minimizeBase :: Eq a => ANF a -> ANF a
-minimizeBase (And left (XOr r1 r2)) =
-  minimizeBase $ XOr (minimizeBase (And left r1)) (minimizeBase (And left r2))
-minimizeBase (And (XOr xleft xright) right) =
-  minimizeBase $ XOr (minimizeBase (And xleft right)) (minimizeBase (And xright right))
-minimizeBase (XOr (XOr l1 l2) right) =
-  minimizeBase $ XOr (minimizeBase l1) (minimizeBase $ XOr l2 right)
-minimizeBase (XOr left right)                 = XOr (minimizeBase left) (minimizeBase right)
-minimizeBase (And left right) | left == right = minimizeBase left
-minimizeBase anf                              = anf
+{- | Canonical form (attempt) of an ANF
+
+ Cases:
+   min a(b+c) => (min ab) + (min ac)
+   min (b+c)a => (min ab) + (min ac)
+   min a + b  => min a + min b
+   min aa     => min a
+-}
+canonicBase :: Eq a => ANF a -> ANF a
+canonicBase (And (XOr ll lr) right) = XOr (canonicBase $ And ll right) (canonicBase $ And lr right)
+canonicBase (And left (XOr rl rr)) = XOr (canonicBase $ And left rl) (canonicBase $ And left rr)
+canonicBase (And left right) | left == right = canonicBase left
+                             | otherwise     = And (canonicBase left) (canonicBase right)
+canonicBase (XOr (XOr ll lr) right) = XOr (canonicBase ll) (canonicBase $ XOr lr right)
+canonicBase (XOr left        right) = XOr (canonicBase left) (canonicBase right)
+canonicBase anf                     = anf
+
+isCanonical :: Eq a => ANF a -> Bool
+isCanonical anf@(XOr left right) = isCanonical left && isCanonical right && noRepeatedClauses anf
+ where
+  noRepeatedClauses :: Eq a => ANF a -> Bool
+  noRepeatedClauses = not . hasDuplicates . toXOrList
+isCanonical anf@(And left right) = notXOrOn left && notXOrOn right && not (repeatedVars anf)
+ where
+  notXOrOn :: ANF a -> Bool
+  notXOrOn (XOr _ _) = False
+  notXOrOn (And l r) = notXOrOn l && notXOrOn r
+  notXOrOn _         = True
+
+  repeatedVars :: Eq a => ANF a -> Bool
+  repeatedVars anf@(And _ _) = hasDuplicates $ toAndList anf
+  repeatedVars _             = False
+isCanonical _ = True
+
+hasDuplicates :: Eq a => [a] -> Bool
+hasDuplicates []  = False
+hasDuplicates [x] = False
+hasDuplicates (x : xs) | x `L.elem` xs = True
+                       | otherwise     = hasDuplicates xs
+
+fixpoint :: Eq a => (a -> a) -> a -> a
+fixpoint f a = if f a == a then a else fixpoint f (f a)
 
 height :: (Num a, Ord a) => ANF b -> a
 height (XOr l r) = 1 + max (height l) (height r)
@@ -173,7 +200,10 @@ unXOr anf       = [anf]
 
 ---------------
 
-fromProp :: P.Prop a -> ANF a
+canonical :: Ord a => ANF a -> ANF a
+canonical = unsafeCleanANF . fixpoint canonicBase
+
+fromProp :: Eq a => P.Prop a -> ANF a
 fromProp (P.And l r) = And (fromProp l) (fromProp r)
 fromProp (P.XOr l r) = XOr (fromProp l) (fromProp r)
 fromProp (P.Or  l r) = XOr (And (fromProp l) (fromProp r)) (XOr (fromProp l) (fromProp r)) -- a || b = ab + a + b
@@ -183,3 +213,52 @@ fromProp (P.Not p  ) = XOr (fromProp p) T -- not a = a + 1
 fromProp (P.Var v  ) = Var v
 fromProp (P.T      ) = T
 fromProp (P.F      ) = F
+
+-- Partial
+removeSortedDuplicates :: Eq a => [a] -> [a]
+removeSortedDuplicates []  = []
+removeSortedDuplicates [x] = [x]
+removeSortedDuplicates (x : y : xs) | x == y    = removeSortedDuplicates (x : xs)
+                                    | otherwise = x : removeSortedDuplicates (y : xs)
+
+-- Only for canonical
+unsafeCleanANF :: Ord a => ANF a -> ANF a
+unsafeCleanANF = unsafeCleanXOr
+
+-- Only for canonical
+unsafeCleanXOr :: Ord a => ANF a -> ANF a
+unsafeCleanXOr = foldr1 XOr . removeSortedDuplicates . L.sort . fmap unsafeCleanAnd . toXOrList
+
+-- Only for canonical
+unsafeCleanAnd :: Ord a => ANF a -> ANF a
+unsafeCleanAnd = foldr1 And . removeSortedDuplicates . L.sort . toAndList
+
+-- Only for canonical
+toXOrList :: ANF a -> [ANF a]
+toXOrList (XOr l r) = l : (toXOrList r)
+toXOrList anf       = [anf]
+
+-- Only for canonical
+toAndList :: ANF a -> [ANF a]
+toAndList (And l r) = (toAndList l) ++ (toAndList r)
+toAndList anf       = [anf]
+
+--
+
+solveByCanonical :: Ord a => ANF a -> IsSAT
+solveByCanonical anf = case canonical anf of
+  F         -> Unsatisfiable
+  otherwise -> Satisfiable
+
+--
+
+fromDimacsBase :: DIMACS Int -> [ANF Int]
+fromDimacsBase dimacs = scanr (\acc anf -> canonical $ XOr (And acc anf) (XOr acc anf)) F
+  $ fmap (fromProp . prop) (clauses dimacs)
+ where
+  prop :: Clause -> P.Prop Int
+  prop xs = foldr P.And P.T $ fmap var xs
+
+  var :: Int -> P.Prop Int
+  var x | x >= 0 = P.Var x
+        | x < 0  = P.Not . P.Var . abs $ x

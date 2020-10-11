@@ -1,21 +1,37 @@
 module Data.Formula.ANF.BaseSpec where
 
-import           Data.Formula.ANF.Base          ( ANF(..)
-                                                , baseSat
-                                                , smtToBaseANF
-                                                )
-import           Data.SAT.Smt
-import           Data.SAT
-import           Smtlib.Syntax.Syntax
-import           Test.Hspec
+import           Debug.Trace
 
 import           Data.List.NonEmpty
+import           Smtlib.Syntax.Syntax
+import           Test.Hspec
+import           Test.QuickCheck
+
+import           Data.Formula.ANF.Base          ( fromProp
+                                                , ANF(..)
+                                                , baseSat
+                                                , smtToBaseANF
+                                                , isCanonical
+                                                , fixpoint
+                                                )
+import           Data.SAT.DIMACS                ( DIMACS(..) )
+import           Data.SAT.Smt
+import           Data.SAT
+import           Data.Formula.Prop              ( Prop
+                                                , fromDimacs
+                                                )
+import           Data.GenValidity               ( GenValid(genValid) )
+import           Data.Formula.Prop              ( height )
+
+
+
 
 spec :: Spec
 spec = do
   itSolveSatisfy
   itMinimizesAnANF
   itConvertsSmtToBase
+  itMinimizeToCanonical
 
 satAnf :: ANF Int
 satAnf = XOr (And (Var 1) (Var 3)) (XOr (And (Var 2) (Var 3)) (Var 3))
@@ -34,14 +50,14 @@ itMinimizesAnANF :: Spec
 itMinimizesAnANF = do
   let minimize' = minimize baseSat
   describe "Minimization" $ do
-    it "Leaves a reduced term as it is" $ minimize' (And (T) (Var 1)) `shouldBe` And (T) (Var 1)
+    it "Leaves a reduced term as it is" $ minimize' (And (Var 1) T) `shouldBe` And (Var 1) T
     it "min a(b+c) => (min ab) + (min ac)"
       $          minimize' (And (Var 1) (XOr (Var 2) (Var 3)))
       `shouldBe` (XOr (And (Var 1) (Var 2)) (And (Var 1) (Var 3)))
 
     it "min (b+c)a => (min ab) + (min ac)"
       $          minimize' (And (XOr (Var 2) (Var 3)) (Var 1))
-      `shouldBe` (XOr (And (Var 2) (Var 1)) (And (Var 3) (Var 1)))
+      `shouldBe` (XOr (And (Var 1) (Var 2)) (And (Var 1) (Var 3)))
     it "min a + b  => min a + min b"
       $          minimize' (XOr (Var 1) (Var 2))
       `shouldBe` (XOr (Var 1) (Var 2))
@@ -75,3 +91,19 @@ itConvertsSmtToBase = do
                    , (T)
                    ]
         in  smtToBaseANF smt `shouldBe` [anf]
+
+itMinimizeToCanonical :: Spec
+itMinimizeToCanonical = do
+  let dimacs = DIMACS { nbvar = 2, nbclauses = 3, clauses = [[1, 2, 3], [2, 3], [1, 3]] }
+  let anf    = fromProp . fromDimacs $ dimacs
+  let m      = minimize baseSat
+  it "Should reduce properly a term" $ (m . m . m . m $ anf) `shouldBe` (m . m . m . m . m $ anf)
+
+  it "Reduces to canonical any formula"
+    $ property
+    $ verboseCheck
+    $ forAll
+        (          (arbitrary :: Gen (Prop Int))
+        `suchThat` (\prop -> height (trace ("Height for: " ++ show prop) prop) <= 5)
+        )
+    $ \prop -> isCanonical . minimize baseSat . fromProp $ trace ("Quichecking: " ++ show prop) prop

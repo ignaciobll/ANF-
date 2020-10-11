@@ -9,6 +9,7 @@ directory and in github pages:
 
 - [Documentation](docs/README.org)
   - [OpenCL intro](docs/opencl/README.org)
+    - [Sparse Matrix](docs/opencl/matrix/README.org)
   - [SAT solving](docs/sat/README.org)
   - [Related Tools](docs/tools/README.org)
 

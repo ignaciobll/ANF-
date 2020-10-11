@@ -1,20 +1,35 @@
 module Main where
 
+import           Text.Pretty.Simple             ( pPrint )
 import           Text.PrettyPrint.Leijen        ( pretty )
 import           Utils.Options                  ( parseArgs
                                                 , runInput
                                                 )
+import           Data.Foldable                  ( toList )
 
-import           Data.Formula.ANF.Base          ( baseSat )
+import qualified Data.List                     as L
+import qualified Data.Map.Strict               as M
+import           Data.IntMap.Strict             ( IntMap )
+import qualified Data.IntMap.Strict            as IntMap
+import qualified Criterion
+import qualified Criterion.Main                as CriterionMain
+
+import           Data.Formula.ANF.Base          ( canonical
+                                                , fromProp
+                                                , baseSat
+                                                )
 import           Data.Formula.ANF.IntegerRepr   ( integerReprSat )
 import           Data.Formula.ANF.IntRepr       ( intReprSat )
 import           Data.Formula.ANF.VectorRepr    ( vectorReprSat )
+import           Data.Formula.Prop              ( fromSmt )
+import           Data.Formula.ANF.CanonicalBase ( fromBase )
+import           Data.Formula.ANF.VectorRepr    ( fromCanonicalBase )
 
 import           Data.SAT                       ( SAT(..) )
 import           Data.SAT.DIMACS
+import           Data.SAT.Smt                   ( parseSmtFile )
 
-import qualified Criterion
-import qualified Criterion.Main                as CriterionMain
+import qualified Data.Formula.ANF.Base         as B
 
 main :: IO ()
 main = do

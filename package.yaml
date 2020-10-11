@@ -21,6 +21,8 @@ description:         Please see the README on GitHub at <https://github.com/igna
 
 dependencies:
 - base >= 4.7 && < 5
+- aeson
+- bytestring
 - wl-pprint
 - megaparsec
 - parsec
@@ -34,6 +36,8 @@ dependencies:
 - criterion
 - deepseq
 - matrix
+- text
+- mtl
 - hashable
 - perfect-hash-generator
 - bits
@@ -43,6 +47,8 @@ dependencies:
 - language-c-quote
 - mainland-pretty
 - pretty-simple
+- validity
+- genvalidity
 
 library:
   source-dirs: src
@@ -88,6 +94,18 @@ executables:
     source-dirs:        app
     ghc-options:
     - -main-is Interactive
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    # - -O2
+    dependencies:
+    - satanf
+
+  satcl:
+    main:               SatCLinc.hs
+    source-dirs:        app
+    ghc-options:
+    - -main-is SatCLinc
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N

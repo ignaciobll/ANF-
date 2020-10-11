@@ -1,0 +1,25 @@
+* Matrix sparse operation
+
+
+From more structured to unstructured:
+- DIA (Diagonal)
+- ELL (Ellpack)
+- CSR (Compressed Row)
+- HYB (Hybrid)
+- COO (Coordinate)
+
+** ELLPACK
+
+Inefficient when row length varies.
+
+
+** Comments
+
+- Transform a CSR to HYB takes O(10-100)
+- If the solver is O(100-1000) then go for HYB
+- If the solver is O(10), go for CSR/COO
+
+
+* References
+
+- https://www.cct.lsu.edu/~korobkin/tmp/SC10/tutorials/docs/M13/M13.pdf
