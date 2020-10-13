@@ -111,15 +111,16 @@ fromCanonicalXOr C.EmptyXOr        = []
 
 fromCanonicalAnd :: (Integral a, FiniteBits a) => C.And a -> a -- foldr (\i -> (+) (2 ^ i)) 0
 fromCanonicalAnd (C.And (C.Var n) right) = setBit (fromCanonicalAnd right) (fromIntegral n)
-fromCanonicalAnd (C.And C.T       right) = complement zeroBits
-fromCanonicalAnd (C.And C.F       right) = setBit (fromCanonicalAnd right) 1
+fromCanonicalAnd (C.And C.One     right) = zeroBits
+fromCanonicalAnd (C.And C.T       right) = zeroBits
+fromCanonicalAnd (C.And C.F       right) = undefined -- setBit (fromCanonicalAnd right) 1
 fromCanonicalAnd C.EmptyAnd              = zeroBits
 
+toExpandedVars :: FiniteBits a => a -> [Int]
+toExpandedVars a = [ n | n <- [0 .. finiteBitSize a], testBit a n ]
+
 toCanonicalAnd :: FiniteBits a => a -> C.And Int
-toCanonicalAnd a = foldr
-  (C.And)
-  C.EmptyAnd
-  [ if n > 1 then C.Var n else C.T | n <- [1 .. finiteBitSize a], testBit a n ]
+toCanonicalAnd a = foldr (C.And) C.EmptyAnd (fmap C.Var $ toExpandedVars a)
 
 toCanonicalXOr :: FiniteBits a => [a] -> C.XOr Int
 toCanonicalXOr = foldr C.XOr C.EmptyXOr . fmap toCanonicalAnd
@@ -131,4 +132,4 @@ toCanonicalBase = C.ANF . toCanonicalXOr
 
 -- solveList :: FiniteBits a => [a] -> IsSAT
 -- solveList xs = undefined
-  -- where
+-- where

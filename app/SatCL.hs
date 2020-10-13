@@ -80,9 +80,6 @@ import qualified Utils.VarsTable               as VT
 import           Utils.OpenCL                   ( autoKernel
                                                 , ProgramSource(..)
                                                 )
-import           Utils.OpenCL.Bitonic           ( bitonicSortBuffer
-                                                , BufferSize(..)
-                                                )
 
 kernelSource :: String
 kernelSource = prettyCompact . ppr $ [cfun|
@@ -107,7 +104,7 @@ kernelAnfAnd = pretty 100 . ppr $ [cfun|
 
     if (gid < out_anf_size) {
       int anf_1_i = gid / anf_1_size;
-      int anf_2_i = gid % anf_2_size;
+      int anf_2_i = gid % anf_2_size; // WRONG
       out_anf[gid] = anf_1[anf_1_i] & anf_2[anf_2_i];
     }
   }
@@ -172,9 +169,6 @@ satanf state v vt = do
   mapM_ print $ [ V.slice (nElem * i) nElem outputData | i <- [0 .. nElem - 1] ]
 
   putStrLn $ "Args: " ++ "size " ++ show (nElem * nElem)
-  -- Bitonic
-  newVector <- bitonicSortBuffer state bufOut (BufferSize (fromIntegral $ nElem * nElem))
-  putStrLn $ "Bitonic: " ++ show newVector
 
 loadSmt :: String -> IO (Either String ([Int], VarsTable String))
 loadSmt filename = do

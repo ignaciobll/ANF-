@@ -17,7 +17,7 @@ data XOr a = XOr (And a) (XOr a) | EmptyXOr
   deriving (Show, Eq, Ord, Generic, NFData, Functor, Foldable, Traversable)
 data And a = And (Value a) (And a) | EmptyAnd
   deriving (Show, Eq, Ord, Generic, NFData, Functor, Foldable, Traversable)
-data Value a = Var a | T | F
+data Value a = Var a | One | T | F
   deriving (Show, Eq, Ord, Generic, NFData, Functor, Foldable, Traversable)
 
 isCanonical :: B.ANF a -> Bool
@@ -62,5 +62,6 @@ fromBase' anf = ANF . fbXOr $ anf
 
   fbValue :: B.ANF a -> Value a
   fbValue (B.Var v) = Var v
-  fbValue (B.T    ) = T
-  fbValue (B.F    ) = F
+  fbValue B.One     = One
+  fbValue B.T       = T
+  fbValue B.F       = F

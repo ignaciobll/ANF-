@@ -74,6 +74,7 @@ import           Control.Parallel.OpenCL        ( CLPlatformID
                                                 )
 
 import           Control.Monad                  ( forM )
+import           Text.Pretty.Simple             ( pPrint )
 
 data PlatformInfo = PlatformInfo
   { cl_platform_profile   :: String
@@ -94,7 +95,7 @@ main = do
     devicesInfo  <- forM deviceIDs $ \deviceId -> getDeviceInfo deviceId
     let (PlatformInfo profile version name extensions _) = platformInfo
     return $ (PlatformInfo profile version name extensions devicesInfo)
-  print fullInfo
+  pPrint fullInfo
 
 getPlatformInfo :: CLPlatformID -> IO PlatformInfo
 getPlatformInfo platform =

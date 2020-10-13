@@ -31,7 +31,9 @@ dependencies:
 - Cabal
 - mod
 - vector
+- vector-algorithms
 - containers
+- unordered-containers
 - QuickCheck
 - criterion
 - deepseq
@@ -49,6 +51,7 @@ dependencies:
 - pretty-simple
 - validity
 - genvalidity
+- time
 
 library:
   source-dirs: src

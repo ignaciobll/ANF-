@@ -1,5 +1,8 @@
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE QuasiQuotes #-}
 
 module Utils.OpenCL.Bitonic where
@@ -11,6 +14,7 @@ import           Control.Parallel.OpenCL        ( CLDeviceType(..)
                                                 , CLError
                                                 , CLProgram
                                                 , CLMem
+                                                , CLEvent
                                                 , clCreateBuffer
                                                 , clCreateKernel
                                                 -- Context
@@ -32,19 +36,45 @@ import           Language.C.Quote.OpenCL        ( cfun )
 import           Text.PrettyPrint.Mainland      ( pretty )
 import           Text.PrettyPrint.Mainland.Class
                                                 ( ppr )
-import           Utils.OpenCL                   ( ProgramSource(..) )
-import           CLUtil.State                   ( OpenCLState(..) )
+
+import           CLUtil                         ( OpenCLState(..)
+                                                , getCLMem
+                                                )
+import           CLUtil.VectorBuffers           ( writeVectorToBuffer
+                                                , bufferToVector
+                                                , vectorToBuffer
+                                                )
+
 import           Control.Parallel.OpenCL.Program
                                                 ( CLKernel )
-import           Foreign.C.Types                ( CInt )
+
+import           Foreign                        ( sizeOf
+                                                , nullPtr
+                                                )
+import           Foreign.C.Types                ( CInt
+                                                , CUInt
+                                                )
 import           Foreign.C                      ( CUInt )
-import           Control.Parallel.OpenCL.Event  ( CLEvent )
+
+{- General -}
+
+import           GHC.Generics                   ( Generic )
+import           Data.Aeson                     ( ToJSON )
+
+import qualified Data.Vector.Storable          as V
+
+{- Locals -}
+import           Utils.OpenCL                   ( ProgramSource(..)
+                                                , prepareKernel
+                                                )
 import           Data.Vector.Storable           ( Vector )
-import           CLUtil.VectorBuffers           ( bufferToVector )
+
+import qualified Utils.Log                     as Log
+import           Control.Monad                  ( (>=>) )
 
 kernelSrcBitonic :: ProgramSource
 kernelSrcBitonic = ProgramSource . pretty 100 . ppr $ [cfun|
-    kernel void bitonic_sort_kernel(__global int *input_ptr, int stage, int passOfStage) {
+    kernel void bitonic_sort_kernel(__global uint *input_ptr, uint stage, uint passOfStage) {
 
     uint threadId = get_global_id(0);
     uint pairDistance = 1 << (stage - passOfStage);
@@ -54,8 +84,8 @@ kernelSrcBitonic = ProgramSource . pretty 100 . ppr $ [cfun|
     uint leftId = (threadId & (pairDistance - 1)) + (threadId >> (stage - passOfStage)) * blockWidth;
     uint rightId = leftId + pairDistance;
 
-    int leftElement, rightElement;
-    int greater, lesser;
+    uint leftElement, rightElement;
+    uint greater, lesser;
     leftElement = input_ptr[leftId];
     rightElement = input_ptr[rightId];
 
@@ -77,114 +107,67 @@ kernelSrcBitonic = ProgramSource . pretty 100 . ppr $ [cfun|
 |]
 
 newtype Stage = Stage { getStage :: Int}
-  deriving (Show, Eq, Ord, Num, Enum, Real, Integral)
+  deriving newtype (Show, Eq, Ord, Num, Enum, Real, Integral, ToJSON)
 
 newtype PassOfStage = PassOfStage { getPassOfStage :: Int }
-  deriving (Show, Eq, Ord, Num, Enum, Real, Integral)
+  deriving newtype (Show, Eq, Ord, Num, Enum, Real, Integral, ToJSON)
 
-newtype BufferSize = BufferSize { getBufferSize :: CUInt }
-  deriving (Show, Eq, Ord, Num, Enum, Real, Integral)
-{- |
-  Recieves a Buffer that we can write in
--}
-bitonicSortBuffer :: OpenCLState -> CLMem -> BufferSize -> IO (Vector CUInt)
-bitonicSortBuffer state buf (BufferSize size) = do
-  let OpenCLState { clDevice = device, clContext = context, clQueue = queue } = state
+newtype BufferElems = BufferElems { getBufferElems :: Int }
+  deriving newtype (Show, Eq, Ord, Num, Enum, Real, Integral, ToJSON)
 
-  program <- clCreateProgramWithSource context (getProgramSource kernelSrcBitonic)
-  clBuildProgram program [device] ""
-  kernel <- clCreateKernel program "bitonic_sort_kernel"
+data BitonicLog = BitonicLog {
+  stage :: Stage,
+  passOfStage :: Maybe PassOfStage,
+  bufferSize :: BufferElems
+  } deriving (Show, Eq, Generic, ToJSON)
 
-  let stage      = 0
-  let nStages    = numStages size
-  let globalSize = [size `shiftR` 1]
-  let localSize  = [] :: [CUInt]
+bitonicSortVector :: OpenCLState -> CLKernel -> Vector CUInt -> IO (Vector CUInt)
+bitonicSortVector state kernel vector =
+  let
+    logBuffer :: CLMem -> Int -> CLEvent -> IO (CLEvent)
+    logBuffer buff nElems evt =
+      bufferToVector (clQueue state) buff nElems [evt]
+        >>= (print :: Vector CUInt -> IO ())
+        >>  pure evt
 
-  clSetKernelArgSto kernel 0 buf
-  events <- mainLoop (Stage 0)
-                     (fromIntegral nStages)
-                     state
-                     []
-                     kernel
-                     globalSize
-                     localSize
-                     buf
-                     (BufferSize size)
-  bufferToVector queue buf (fromIntegral size) events :: IO (Vector CUInt)
+    nearestPow2 :: (Bits a, Integral a) => a -> Int
+    nearestPow2 n = fromIntegral $ if 2 ^ (numStages n) == n then numStages n else 1 + numStages n
 
-mainLoop
-  :: Stage       -- Stage step
-  -> Int         -- Number of Stages
-  -> OpenCLState -- State (queue, context, device)
-  -> [CLEvent]   -- List of dependen events
-  -> CLKernel    -- Kernel
-  -> [CUInt]     -- Global Size
-  -> [CUInt]     -- Local Size
-  -> CLMem       -- Buffer
-  -> BufferSize  -- Buffer's size
-  -> IO [CLEvent]
-mainLoop (Stage stage) nStages state events kernel globalSize localSize buf bufferSize
-  | stage >= nStages = pure events
-  | otherwise = do
-    clSetKernelArgSto kernel 1 (fromIntegral stage :: CInt)
-    newEvents <- innerLoop (Stage stage)
-                           (PassOfStage 0)
-                           state
-                           events
-                           kernel
-                           globalSize
-                           localSize
-                           buf
-                           bufferSize
-    mainLoop (Stage stage + 1)
-             nStages
-             state
-             (events ++ newEvents)
-             kernel
-             globalSize
-             localSize
-             buf
-             bufferSize
+    nearestPow2Buff :: Int -> IO CLMem
+    nearestPow2Buff nElems = do
+      let nBytes = (fromIntegral $ nearestPow2 nElems) * sizeOf (undefined :: CUInt)
+      clCreateBuffer (clContext state) [CL_MEM_ALLOC_HOST_PTR] (nBytes, nullPtr)
+  in
+    do
+      let nElems = V.length vector
+      buff <- nearestPow2Buff nElems
+      writeVectorToBuffer state buff vector
+      evts <- bitonicSortBuffer' state kernel buff (BufferElems nElems)
+      bufferToVector (clQueue state) buff (nearestPow2 nElems) [last evts] :: IO (Vector CUInt)
 
-innerLoop
-  :: Stage       -- Stage step
-  -> PassOfStage -- Passofstage step
-  -> OpenCLState -- State (queue, context, device)
-  -> [CLEvent]   -- List of dependen events
-  -> CLKernel    -- Kernel
-  -> [CUInt]     -- Global Size
-  -> [CUInt]     -- Local Size
-  -> CLMem       -- Buffer
-  -> BufferSize  -- Buffer's size
-  -> IO [CLEvent]
-innerLoop (Stage stage) (PassOfStage passOfStage) state events kernel globalSize localSize buf (BufferSize size)
-  | passOfStage > stage
-  = pure events
-  | otherwise
-  = do
-    putStrLn $ "Stage " ++ show stage ++ " Pass: " ++ show passOfStage
-    clSetKernelArgSto kernel 2 (fromIntegral passOfStage :: CInt)
-    event <- clEnqueueNDRangeKernel (clQueue state) kernel globalSize localSize events
-    innerLoop (Stage stage)
-              (PassOfStage passOfStage + 1)
-              state
-              (event : events)
-              kernel
-              globalSize
-              localSize
-              buf
-              (BufferSize size)
+{- Buffer must have size 2^n -}
+bitonicSortBuffer' :: OpenCLState -> CLKernel -> CLMem -> BufferElems -> IO [CLEvent]
+bitonicSortBuffer' state kernel buff (BufferElems nElems) =
+  mapM (bitonicSortCore' state kernel buff nElems) (stagePairs nElems)
+
+bitonicSortCore' :: OpenCLState -> CLKernel -> CLMem -> Int -> (Stage, PassOfStage) -> IO (CLEvent)
+bitonicSortCore' state kernel buff nElems (Stage stage, PassOfStage pos) = do
+  clSetKernelArgSto kernel 0 buff
+  clSetKernelArgSto kernel 1 (fromIntegral stage :: CInt)
+  clSetKernelArgSto kernel 2 (fromIntegral pos :: CInt)
+  clEnqueueNDRangeKernel (clQueue state) kernel [div nElems 2] [] []
+
+prepareBitonic :: OpenCLState -> IO (CLKernel, CLProgram)
+prepareBitonic state = prepareKernel state (getProgramSource kernelSrcBitonic) "bitonic_sort"
+
+{- Auxiliary -}
 
 numStages :: (Bits a, Integral a) => a -> a
 numStages x | x > 1     = 1 + numStages (shiftR x 1)
             | otherwise = 0
 
-bitonicSort' :: OpenCLState -> CLKernel -> CLMem -> BufferSize -> Stage -> PassOfStage -> IO CLMem
-bitonicSort' state kernel buf size stage passOfStage = do
-  clSetKernelArgSto kernel 0 buf
-  clSetKernelArgSto kernel 1 (fromIntegral stage :: CInt)
-  clSetKernelArgSto kernel 2 (fromIntegral passOfStage :: CInt)
-
-  execEvent <- clEnqueueNDRangeKernel (clQueue state) kernel [size] [] []
-
-  pure buf
+stagePairs :: Int -> [(Stage, PassOfStage)]
+stagePairs nElems = passOfStages stages >>= id -- (flatten)
+ where
+  stages       = [0 .. (numStages nElems) - 1] :: [Int]
+  passOfStages = fmap (\stage -> fmap (\pos -> (Stage stage, PassOfStage pos)) [0 .. stage])

@@ -1,7 +1,10 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingStrategies #-}
 module SatCLinc where
 
 import           Test.Hspec                     ( hspec
@@ -97,7 +100,9 @@ import           Data.Formula.ANF.Base          ( canonical
 import           Data.Formula.ANF.CanonicalBase ( fromBase
                                                 , fromBase'
                                                 )
-import           Data.Formula.ANF.VectorRepr    ( fromCanonicalBase )
+import           Data.Formula.ANF.VectorRepr    ( toCanonicalBase
+                                                , fromCanonicalBase
+                                                )
 import           Data.Formula.Prop              ( fromSmt )
 
 import           Data.SAT.Smt                   ( parseSmtFile )
@@ -106,16 +111,17 @@ import           Data.SAT.DIMACS                ( printParseError )
 import qualified Data.List                     as L
 import qualified Data.Formula.ANF.Base         as B
 
-import           Utils.VarsTable                ( VarsTable(..) )
+import           Utils.VarsTable                ( restoreVars'
+                                                , VarsTable(..)
+                                                )
 import qualified Utils.VarsTable               as VT
 
 import           Utils.OpenCL                   ( autoKernel
                                                 , prepareKernel
                                                 , ProgramSource(..)
                                                 )
-import           Utils.OpenCL.Bitonic           ( bitonicSortBuffer
-                                                , BufferSize(..)
-                                                )
+
+import           Utils.Export.Spreadsheet       ( exportStringVarsTable )
 
 import           Smtlib.Syntax.Syntax           ( Source )
 import           Control.Parallel.OpenCL.Program
@@ -123,6 +129,11 @@ import           Control.Parallel.OpenCL.Program
 
 import           CLSat                          ( kernelAnfAnd )
 import           Data.Aeson.Types               ( pairs )
+import           Data.Time.Clock.POSIX          ( getPOSIXTime
+                                                , POSIXTime
+                                                )
+import           Data.Formula.ANF.VectorRepr    ( toExpandedVars )
+import qualified Utils.Log                     as Log
 
 
 instance ToJSON CUInt where
@@ -131,7 +142,18 @@ instance ToJSON CUInt where
 instance ToJSON CInt where
   toJSON cint = toJSON (fromIntegral cint :: Integer)
 
+data LogType = Step | CopyOpenCLMem | OpenCLBench | SequentialBench | OpenCLBitonic
+  deriving (Eq, Show, Generic, ToJSON)
+
+data LogBenchTick = Start | End deriving (Show, Eq, Ord, Generic, ToJSON)
+
+data LogBench = LogBench {
+  stepBench :: Int,
+  tick :: LogBenchTick
+  } deriving (Show, Eq, Generic, ToJSON)
+
 data LogStep = LogStep {
+  stepN :: Int,
   logNElemsBuff1 :: Int,  -- ^ logNElemsBuff1
   logNElemsBuff2 :: Int,  -- ^ logNElemsBuff2
   logNElemsBuffOut :: Int,  -- ^ logNElemsBuffOut
@@ -148,62 +170,29 @@ data LogStep = LogStep {
   } deriving (Eq, Show, Generic)
 
 instance Show OpenCLState
-instance ToJSON LogStep where
-  toJSON LogStep {..} = object
-    [ "logUsedVars" .= logUsedVars
-    , "logNElemsBuff1" .= logNElemsBuff1
-    , "logNElemsBuff2" .= logNElemsBuff2
-    , "logNElemsBuffOut" .= logNElemsBuffOut
-    , "logNElemsReduced" .= logNElemsReduced
-    , "logNBytesBuff1" .= logNBytesBuff1
-    , "logNBytesBuff2" .= logNBytesBuff2
-    , "logNBytesBuffOut" .= logNBytesBuffOut
-    , "logNBytesBuffReduced" .= logNBytesBuffReduced
-    , "logBuff1" .= logBuff1
-    , "logBuff2" .= logBuff2
-    , "logBuffOut" .= logBuffOut
-    , "logBuffReduced" .= logBuffReduced
-    ]
-
-  toEncoding LogStep {..} =
-    pairs
-      $  "logUsedVars"
-      .= logUsedVars
-      <> "logNElemsBuff1"
-      .= logNElemsBuff1
-      <> "logNElemsBuff2"
-      .= logNElemsBuff2
-      <> "logNElemsBuffOut"
-      .= logNElemsBuffOut
-      <> "logNElemsReduced"
-      .= logNElemsReduced
-      <> "logNBytesBuff1"
-      .= logNBytesBuff1
-      <> "logNBytesBuff2"
-      .= logNBytesBuff2
-      <> "logNBytesBuffOut"
-      .= logNBytesBuffOut
-      <> "logNBytesBuffReduced"
-      .= logNBytesBuffReduced
-      <> "logBuff1"
-      .= logBuff1
-      <> "logBuff2"
-      .= logBuff2
-      <> "logBuffOut"
-      .= logBuffOut
-      <> "logBuffReduced"
-      .= logBuffReduced
+instance ToJSON LogStep
 
 logger :: ToJSON a => a -> IO ()
 logger = BL.putStrLn . encode
 
 main :: IO ()
 main = do
-  [filename] <- getArgs
+  [filename]              <- getArgs
+  (state, handler', args) <- prepareContextAndFile filename
+  result                  <- satanf handler' args
 
-  context    <- clCreateContextFromType [] [CL_DEVICE_TYPE_GPU] print
-  device     <- head <$> clGetContextDevices context
-  queue      <- clCreateCommandQueue context device []
+  case V.length result of
+    0         -> putStrLn "UNSAT"
+    otherwise -> putStrLn $ "Formula with " ++ (show . V.length) result ++ " elems."
+
+  clReleaseContext (clContext state)
+  exitSuccess
+
+prepareContextAndFile :: String -> IO (OpenCLState, Handler SatanfArgs, SatanfArgs)
+prepareContextAndFile filename = do
+  context <- clCreateContextFromType [] [CL_DEVICE_TYPE_GPU] print
+  device  <- head <$> clGetContextDevices context
+  queue   <- clCreateCommandQueue context device []
 
   let state = OpenCLState { clDevice = device, clContext = context, clQueue = queue }
 
@@ -217,15 +206,18 @@ main = do
       let v               = map fst vectorsAndTable
       let vt              = head . map snd $ vectorsAndTable
       let handler' = handleReduceResult >=> handleWithLog >=> nextSatanfArgs
-      print vt
-      result <- satanf handler' (SatanfArgs state kernel (V.fromList [0 :: CUInt]) v vt V.empty)
-      print result
-      clReleaseContext context
-      exitSuccess
+      let step            = SatanfStep 0
+      let args = (SatanfArgs step state kernel (V.fromList [0 :: CUInt]) v vt V.empty)
+      pure $ (state, handler', args)
 
 type Handler a = a -> IO a
 
+newtype SatanfStep = SatanfStep { getSatanfStep :: Int }
+  deriving (Show, Eq)
+  deriving newtype (Enum, ToJSON)
+
 data SatanfArgs = SatanfArgs {
+  stepSatanf :: SatanfStep,
   getState :: OpenCLState,
   getKernel :: CLKernel,
   getAnf :: Vector CUInt,
@@ -238,43 +230,51 @@ data SatanfArgs = SatanfArgs {
 -- viewFormula :: Vector CUInt
 
 handleWithLog :: Handler SatanfArgs
-handleWithLog args@(SatanfArgs state kernel anf (v : vs) vt result) = do
+handleWithLog args@(SatanfArgs step state kernel anf (v : vs) vt result) = do
   let nElemAcc                     = V.length anf
   let nElemAnd                     = V.length v
   let nElemOut                     = nElemAcc * nElemAnd
   let nBytesAcc = nElemAcc * sizeOf (undefined :: CUInt)
   let nBytesAnd = nElemAnd * sizeOf (undefined :: CUInt)
-  let nBytesOut                    = nBytesAcc * nBytesAnd
+  let nBytesOut = nElemOut * sizeOf (undefined :: CUInt)
   let nElemRed                     = V.length result
   let nBytesRed = nElemRed * sizeOf (undefined :: CUInt)
 
   let (VarsTable (usedVars, _, _)) = vt
 
-  logger $ LogStep nElemAcc
-                   nElemAnd
-                   nElemOut
-                   nElemRed
-                   nBytesAcc
-                   nBytesAnd
-                   nBytesOut
-                   nBytesRed
-                   (Just anf)
-                   (Just v)
-                   (Just result)
-                   (Just $ reduceVector result)
-                   usedVars
+  posixTime <- (round . (* 1000)) <$> getPOSIXTime
+  Log.log Step $ LogStep (getSatanfStep step)
+                         nElemAcc
+                         nElemAnd
+                         nElemOut
+                         nElemRed
+                         nBytesAcc
+                         nBytesAnd
+                         nBytesOut
+                         nBytesRed
+                         Nothing -- (Just anf)
+                         Nothing -- (Just v)
+                         Nothing -- (Just result)
+                         Nothing -- (Just $ reduceVector result)
+                         usedVars
 
   pure args
 
 handleReduceResult :: Handler SatanfArgs
-handleReduceResult (SatanfArgs state kernel anf vvs vt result)
-  | (reduceVector result) == V.fromList [] = pure
-    (SatanfArgs state kernel anf vvs vt (V.fromList [0]))
-  | otherwise = pure (SatanfArgs state kernel anf vvs vt (reduceVector result))
-
+handleReduceResult (SatanfArgs step state kernel anf vvs vt result) = do
+  Log.log SequentialBench (LogBench (getSatanfStep step) Start)
+  let reduced = (reduceVector result) == V.fromList []
+  case reduced of
+    False -> do
+      Log.log SequentialBench (LogBench (getSatanfStep step) End)
+      pure (SatanfArgs step state kernel anf vvs vt (reduceVector result))
+    otherwise -> do --UNSAT
+      Log.log SequentialBench (LogBench (getSatanfStep step) End)
+      print $ head vvs
+      pure (SatanfArgs step state kernel anf vvs vt (V.fromList []))
 
 handleWithCheck :: Handler SatanfArgs
-handleWithCheck args@(SatanfArgs state kernel anf (v : vs) vt result)
+handleWithCheck args@(SatanfArgs _ state kernel anf (v : vs) vt result)
   | reduceVector (sequentialAnd anf v) == V.fromList [] && result == V.fromList [0] = pure args
   | reduceVector (sequentialAnd anf v) == result = pure args
   | otherwise = do
@@ -284,12 +284,13 @@ handleWithCheck args@(SatanfArgs state kernel anf (v : vs) vt result)
     pure args
 
 nextSatanfArgs :: SatanfArgs -> IO SatanfArgs
-nextSatanfArgs (SatanfArgs state kernel anf (v : vs) vt result) =
-  pure (SatanfArgs state kernel result vs vt result)
+nextSatanfArgs (SatanfArgs step state kernel anf (v : vs) vt result)
+  | result == V.fromList [] = pure (SatanfArgs (succ step) state kernel result [] vt result)
+  | otherwise               = pure (SatanfArgs (succ step) state kernel result vs vt result)
 
 satanf :: Handler SatanfArgs -> SatanfArgs -> IO (Vector CUInt)
-satanf handler (SatanfArgs _     kernel _   []       _  result) = pure result
-satanf handler (SatanfArgs state kernel anf (v : vs) vt _     ) = do
+satanf handler (SatanfArgs step _     kernel _   []       _  result) = pure result
+satanf handler (SatanfArgs step state kernel anf (v : vs) vt _     ) = do
 
   let (OpenCLState device context queue) = state
   let nElemAcc                           = V.length anf
@@ -297,7 +298,7 @@ satanf handler (SatanfArgs state kernel anf (v : vs) vt _     ) = do
   let nElemOut                           = nElemAcc * nElemAnd
   let nBytesAcc = nElemAcc * sizeOf (undefined :: CUInt)
   let nBytesAnd = nElemAnd * sizeOf (undefined :: CUInt)
-  let nBytesOut                          = nBytesAcc * nBytesAnd
+  let nBytesOut = nElemOut * sizeOf (undefined :: CUInt)
 
   -- Buffers for input and output data.
   -- We request OpenCL to create a buffer on the host (CL_MEM_ALLOC_HOST_PTR)
@@ -320,9 +321,15 @@ satanf handler (SatanfArgs state kernel anf (v : vs) vt _     ) = do
   clSetKernelArgSto kernel 3 bufIn2
   clSetKernelArgSto kernel 4 ((fromIntegral nElemOut) :: CInt)
   clSetKernelArgSto kernel 5 bufOut
-  execEvent          <- clEnqueueNDRangeKernel queue kernel [nBytesOut] [] []
 
-  andVector          <- bufferToVector queue bufOut nElemOut [execEvent] :: IO (Vector CUInt)
+  Log.log OpenCLBench (LogBench (getSatanfStep step) Start)
+  execEvent <- clEnqueueNDRangeKernel queue kernel [nBytesOut] [] []
+  _         <- clWaitForEvents [execEvent]
+  Log.log OpenCLBench (LogBench (getSatanfStep step) End)
+
+  Log.log CopyOpenCLMem (LogBench (getSatanfStep step) Start)
+  andVector <- bufferToVector queue bufOut nElemOut [execEvent] :: IO (Vector CUInt)
+  Log.log CopyOpenCLMem (LogBench (getSatanfStep step) End)
 
   eventReleasebufIn1 <- clReleaseMemObject bufIn1
   eventReleasebufIn2 <- clReleaseMemObject bufIn2
@@ -330,13 +337,16 @@ satanf handler (SatanfArgs state kernel anf (v : vs) vt _     ) = do
 
   let result = andVector -- V.concat [andVector, anf, v]
 
-  args <- handler (SatanfArgs state kernel anf (v : vs) vt result)
+  args <- handler (SatanfArgs step state kernel anf (v : vs) vt result)
   satanf handler args
 
-loadSmt :: Source -> [(Vector CUInt, VarsTable String)]
-loadSmt smt =
-  foldr (\smt acc@((_, vt) : _) -> (smt2AnfVec vt smt) : acc) [(V.fromList [0], VT.emptyVarsTable)]
+loadSmt' :: VarsTable String -> Source -> [(Vector CUInt, VarsTable String)]
+loadSmt' vt smt =
+  foldr (\smt acc@((_, vt) : _) -> (smt2AnfVec vt smt) : acc) [(V.fromList [0], vt)]
     $ fmap (: []) smt
+
+loadSmt :: Source -> [(Vector CUInt, VarsTable String)]
+loadSmt = loadSmt' VT.emptyVarsTable
 
 smt2AnfVec :: VarsTable String -> Source -> (Vector CUInt, VarsTable String)
 smt2AnfVec vt smt =

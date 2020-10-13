@@ -51,6 +51,7 @@ data ANF a
   = XOr (ANF a) (ANF a)
   | And (ANF a) (ANF a)
   | Var a
+  | One
   | T
   | F
   deriving (Show, Eq, Ord, Generic, NFData, Functor, Foldable, Traversable)
@@ -66,8 +67,9 @@ prettyBase (And l           r@(XOr _ _)) = pretty l <> text "(" <> pretty r <> t
 prettyBase (And l           r          ) = pretty l <> pretty r
 prettyBase (XOr l           r          ) = pretty l <+> (text "⊕" <+> pretty r)
 prettyBase (Var a                      ) = pretty a
-prettyBase T                             = text "1"
-prettyBase F                             = text "0"
+prettyBase One                           = text "1"
+prettyBase T                             = text "T"
+prettyBase F                             = text "F"
 
 parseBaseANF :: DIMACS Int -> ANF Int
 parseBaseANF = toXOr . clauses
@@ -207,9 +209,9 @@ fromProp :: Eq a => P.Prop a -> ANF a
 fromProp (P.And l r) = And (fromProp l) (fromProp r)
 fromProp (P.XOr l r) = XOr (fromProp l) (fromProp r)
 fromProp (P.Or  l r) = XOr (And (fromProp l) (fromProp r)) (XOr (fromProp l) (fromProp r)) -- a || b = ab + a + b
-fromProp (P.Imp l r) = XOr (And (fromProp l) (fromProp r)) (XOr (fromProp l) T) -- a => b = ab + a + 1
+fromProp (P.Imp l r) = XOr (And (fromProp l) (fromProp r)) (XOr (fromProp l) One) -- a => b = ab + a + 1
 fromProp (P.Iff l r) = XOr (fromProp l) (XOr (fromProp r) T) -- a <=> b = a + b + 1
-fromProp (P.Not p  ) = XOr (fromProp p) T -- not a = a + 1
+fromProp (P.Not p  ) = XOr (fromProp p) One -- not a = a + 1
 fromProp (P.Var v  ) = Var v
 fromProp (P.T      ) = T
 fromProp (P.F      ) = F
